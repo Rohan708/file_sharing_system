@@ -1,5 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from app.utils import encrypt_data, decrypt_data
+from fastapi import Request
+from fastapi.responses import FileResponse
 from app.schemas import UserSchema, LoginSchema
 import os
 
@@ -36,13 +38,19 @@ def login(data: LoginSchema):
 def list_files():
     return {"files": os.listdir(FILES_DIR)}
 
+
+
 @router.get("/download-file/{filename}")
-def download_file(filename: str):
+def download_file(filename: str, request: Request):
     path = os.path.join(FILES_DIR, filename)
     if not os.path.exists(path):
         raise HTTPException(status_code=404, detail="File not found")
+
     encrypted_link = encrypt_data(filename)
-    return {"download-link": f"/client/secure-download/{encrypted_link}", "message": "success"}
+    full_url = str(request.base_url) + f"client/secure-download?token={encrypted_link}"
+    
+    return {"download-url": full_url, "message": "success"}
+
 
 @router.get("/secure-download/{token}")
 def secure_download(token: str):
@@ -52,5 +60,22 @@ def secure_download(token: str):
         if not os.path.exists(path):
             raise HTTPException(status_code=404, detail="File not found")
         return {"message": f"File ready for download: {filename}"}
+    except:
+        raise HTTPException(status_code=400, detail="Invalid token")
+
+@router.get("/secure-download")
+def secure_download(token: str):
+    try:
+        filename = decrypt_data(token)
+        path = os.path.join(FILES_DIR, filename)
+
+        if not os.path.exists(path):
+            raise HTTPException(status_code=404, detail="File not found")
+
+        return FileResponse(
+            path,
+            media_type="application/octet-stream",
+            filename=filename
+        )
     except:
         raise HTTPException(status_code=400, detail="Invalid token")
